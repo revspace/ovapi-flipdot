@@ -1,10 +1,11 @@
 #!/bin/env python3
 
 import requests, sys, dateutil.parser, datetime
-import paho.mqtt.client as mqtt
+import paho.mqtt.publish
 
 j = requests.get('http://kv78turbo.ovapi.nl/stopareacode/1528,7211,Ldv').json()
-passes = {}
+passes = []
+mqttBody = ''
 
 for stopArea in j:
   for timingPoints in j[stopArea]:
@@ -14,15 +15,13 @@ for stopArea in j:
       departureTimeDiff = max(0, int((dateutil.parser.parse(p['ExpectedDepartureTime']) - datetime.datetime.now()).total_seconds()/60))
 
       key = '%s I %s' % (p['LinePublicNumber'], p['DestinationName50'])
+      passes.append((departureTimeDiff, key))
 
-      # print('%s: %s m (%s)' % (key, departureTimeDiff, p['ExpectedDepartureTime']))
+passes.sort()
 
-      if key in passes.keys():
-        passes[key] = min(passes[key], departureTimeDiff)
-      else:
-        passes[key] = departureTimeDiff
+for passTime in passes[:6]:
+  s = '%s: %s m' % (passTime[1], passTime[0])
+  print(s)
+  mqttBody += s + '\n '
 
-print('total', len(passes))
-
-for passTime in passes:
-  print('%s: %s m' % (passTime, passes[passTime]))
+paho.mqtt.publish.single('revspace/flipdot', payload=mqttBody, hostname='mosquitto.revspace.nl')
